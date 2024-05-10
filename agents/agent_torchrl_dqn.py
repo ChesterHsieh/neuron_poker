@@ -1,25 +1,21 @@
 """Player based on a trained neural network"""
+import json
 # pylint: disable=wrong-import-order,invalid-name,import-error,missing-function-docstring
 import logging
 import time
 
 import numpy as np
+import torch.nn
+import torch.optim
+from torch import optim
+from torchrl.data import CompositeSpec
+from torchrl.data import ReplayBuffer, ListStorage
+from torchrl.envs import RewardSum, StepCounter, TransformedEnv, GymLikeEnv
+from torchrl.envs.libs.gym import GymEnv, GymWrapper
+from torchrl.modules import MLP, QValueActor
 
 from agents.player_interface import Player
 from gym_env.enums import Action
-
-import tensorflow as tf
-import json
-
-from tensorflow.keras.models import Sequential, model_from_json
-from tensorflow.keras.callbacks import TensorBoard
-from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.optimizers import Adam
-
-from rl.policy import BoltzmannQPolicy
-from rl.memory import SequentialMemory
-from rl.agents import DQNAgent
-from rl.core import Processor
 
 autoplay = True  # play automatically if played against keras-rl
 
@@ -35,7 +31,7 @@ enable_double_dqn = False
 log = logging.getLogger(__name__)
 
 
-class KerasRLDQNPlayer(Player):
+class TorchRLDQN(Player):
     """Mandatory class with the player methods"""
 
     def __init__(self, name='DQN', load_model=None, env=None):
@@ -54,30 +50,21 @@ class KerasRLDQNPlayer(Player):
         if load_model:
             self.load(load_model)
 
-    def initiate_agent(self, env):
+    def initiate_agent(self, env: GymLikeEnv, device='cpu'):
         """initiate a deep Q agent"""
-        tf.compat.v1.disable_eager_execution()
-
-        self.env = env
 
         nb_actions = self.env.action_space.n
-
-        self.model = Sequential()
-        self.model.add(Dense(512, activation='relu', input_shape=env.observation_space))
-        self.model.add(Dropout(0.2))
-        self.model.add(Dense(512, activation='relu'))
-        self.model.add(Dropout(0.2))
-        self.model.add(Dense(512, activation='relu'))
-        self.model.add(Dropout(0.2))
-        self.model.add(Dense(nb_actions, activation='linear'))
-
+        self.env = env
+        self.model = DQN(env.observation_space, nb_actions).to(device)
+        self.target_model = DQN(env.observation_space, nb_actions).to(device)
+        self.target_model.load_state_dict(self.model.state_dict())
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
+        self.memory = ReplayBuffer(storage=ListStorage(max_size=memory_limit),
+                                   batch_size=batch_size)
+        q_net = trl.modules.QNetwork(self.model, self.target_model)
         # Finally, we configure and compile our agent. You can use every built-in Keras optimizer and
         # even the metrics!
-        memory = SequentialMemory(limit=memory_limit, window_length=window_length)
-        policy = TrumpPolicy()
-
-        nb_actions = env.action_space.n
-
+        # 這格應該最麻煩弄. todo:
         self.dqn = DQNAgent(model=self.model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=nb_steps_warmup,
                             target_model_update=1e-2, policy=policy,
                             processor=CustomProcessor(),
@@ -95,22 +82,19 @@ class KerasRLDQNPlayer(Player):
         """Train a model"""
         # initiate training loop
         timestr = time.strftime("%Y%m%d-%H%M%S") + "_" + str(env_name)
-        tensorboard = TensorBoard(log_dir='./Graph/{}'.format(timestr), histogram_freq=0, write_graph=True,
-                                  write_images=False)
+        writer = SummaryWriter(log_dir=f'./Graph/{timestr}')
 
         self.dqn.fit(self.env, nb_max_start_steps=nb_max_start_steps, nb_steps=nb_steps, visualize=False, verbose=2,
                      start_step_policy=self.start_step_policy, callbacks=[tensorboard])
 
         # Save the architecture
-        dqn_json = self.model.to_json()
-        with open("dqn_{}_json.json".format(env_name), "w") as json_file:
-            json.dump(dqn_json, json_file)
+        # dqn_json = self.model.to_json() // model comes from whole class definition
 
         # After training is done, we save the final weights.
-        self.dqn.save_weights('dqn_{}_weights.h5'.format(env_name), overwrite=True)
+        torch.save(self.model.state_dict(), 'dqn_{}_weights.pth'.format(env_name))
 
         # Finally, evaluate our algorithm for 5 episodes.
-        self.dqn.test(self.env, nb_episodes=5, visualize=False)
+        # self.dqn.test(self.env, nb_episodes=5, visualize=False) todo: implement
 
     def load(self, env_name):
         """Load a model"""
@@ -222,3 +206,72 @@ class CustomProcessor(Processor):
                     action += i
 
         return action
+
+
+# ====================================================================
+# Environment utils
+# --------------------------------------------------------------------
+
+
+def make_env(env_name="CartPole-v1", device="cpu"):
+    env = GymEnv(env_name, device=device)
+    env = TransformedEnv(env)
+    env.append_transform(RewardSum())
+    env.append_transform(StepCounter())
+    return env
+
+
+# ====================================================================
+# Model utils
+# --------------------------------------------------------------------
+
+
+def make_dqn_modules(proof_environment):
+    # Define input shape
+    input_shape = proof_environment.observation_spec["observation"].shape
+    env_specs = proof_environment.specs
+    num_outputs = env_specs["input_spec", "full_action_spec", "action"].space.n
+    action_spec = env_specs["input_spec", "full_action_spec", "action"]
+
+    # Define Q-Value Module
+    mlp = MLP(
+        in_features=input_shape[-1],
+        activation_class=torch.nn.ReLU,
+        out_features=num_outputs,
+        num_cells=[120, 84],
+    )
+
+    qvalue_module = QValueActor(
+        module=mlp,
+        spec=CompositeSpec(action=action_spec),
+        in_keys=["observation"],
+    )
+    return qvalue_module
+
+
+def make_dqn_model(env_name):
+    proof_environment = make_env(env_name, device="cpu")
+    qvalue_module = make_dqn_modules(proof_environment)
+    del proof_environment
+    return qvalue_module
+
+
+# ====================================================================
+# Evaluation utils
+# --------------------------------------------------------------------
+
+
+def eval_model(actor, test_env, num_episodes=3):
+    test_rewards = torch.zeros(num_episodes, dtype=torch.float32)
+    for i in range(num_episodes):
+        td_test = test_env.rollout(
+            policy=actor,
+            auto_reset=True,
+            auto_cast_to_device=True,
+            break_when_any_done=True,
+            max_steps=10_000_000,
+        )
+        reward = td_test["next", "episode_reward"][td_test["next", "done"]]
+        test_rewards[i] = reward.sum()
+    del td_test
+    return test_rewards.mean()

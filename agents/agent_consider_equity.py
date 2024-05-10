@@ -1,9 +1,9 @@
 """Random player"""
-
+from agents.player_interface import Player
 from gym_env.enums import Action
 
 
-class Player:
+class EquityPlayer(Player):
     """Mandatory class with the player methods"""
 
     def __init__(self, name="Random", min_call_equity=None, min_bet_equity=None):
@@ -19,7 +19,7 @@ class Player:
     def action(self, action_space, observation, info):  # pylint: disable=no-self-use
         """Mandatory method that calculates the move based on the observation array and the action space."""
         _ = observation
-        equity_alive = info["player_data"]["equity_to_river_alive"]
+        equity_alive = info["players"]["equity_to_river_alive"]
 
         incremen1 = 0.1
         increment2 = 0.2

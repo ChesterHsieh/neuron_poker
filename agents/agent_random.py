@@ -1,10 +1,11 @@
 """Random player"""
 import random
 
+from agents.player_interface import Player
 from gym_env.enums import Action
 
 
-class Player:
+class RandomPlayer(Player):
     """Mandatory class with the player methods"""
 
     def __init__(self, name='Random'):

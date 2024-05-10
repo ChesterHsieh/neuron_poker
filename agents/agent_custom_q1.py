@@ -5,9 +5,10 @@ from tensorflow.keras.layers import Dense, Dropout
 from rl.memory import SequentialMemory
 
 from agents.agent_keras_rl_dqn import TrumpPolicy, memory_limit, window_length
+from agents.player_interface import Player
 from gym_env import env
 
-class Player:
+class CustomQ1(Player):
     """Mandatory class with the player methods"""
 
     def __init__(self, name='Custom_Q1'):

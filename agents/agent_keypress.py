@@ -1,9 +1,9 @@
 """manual keypress agent"""
-
+from agents.player_interface import Player
 from gym_env.enums import Action
 
 
-class Player:
+class KeypressPlayer(Player):
     """Mandatory class with the player methods"""
 
     def __init__(self, name='Keypress'):

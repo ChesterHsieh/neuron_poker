@@ -17,7 +17,7 @@ def _create_env(n_players,
 
     for _ in range(n_players):
         player = PlayerForTest()
-        env.add_player(player)
+        env._add_player(player)
     env.reset()
     return env
 

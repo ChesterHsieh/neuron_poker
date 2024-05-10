@@ -30,6 +30,9 @@ import numpy as np
 import pandas as pd
 from docopt import docopt
 
+from agents.agent_consider_equity import EquityPlayer
+from agents.agent_keypress import KeypressPlayer
+from agents.agent_random import RandomPlayer
 from gym_env.env import PlayerShell
 from tools.helper import get_config
 from tools.helper import init_logger
@@ -101,40 +104,30 @@ class SelfPlay:
 
     def random_agents(self):
         """Create an environment with 6 random players"""
-        from agents.agent_random import Player as RandomPlayer
         env_name = 'neuron_poker-v0'
         num_of_plrs = 2
-        self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render)
-        for _ in range(num_of_plrs):
-            player = RandomPlayer()
-            self.env.add_player(player)
-
+        players = [RandomPlayer() for _ in range(num_of_plrs)]
+        self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render, players=players)
         self.env.reset()
 
     def key_press_agents(self):
         """Create an environment with 6 key press agents"""
-        from agents.agent_keypress import Player as KeyPressAgent
         env_name = 'neuron_poker-v0'
         num_of_plrs = 2
-        self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render)
-        for _ in range(num_of_plrs):
-            player = KeyPressAgent()
-            self.env.add_player(player)
-
+        players = [KeypressPlayer() for _ in range(num_of_plrs)]
+        self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render, players=players)
         self.env.reset()
 
     def equity_vs_random(self):
         """Create 6 players, 4 of them equity based, 2 of them random"""
-        from agents.agent_consider_equity import Player as EquityPlayer
-        from agents.agent_random import Player as RandomPlayer
         env_name = 'neuron_poker-v0'
-        self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render)
-        self.env.add_player(EquityPlayer(name='equity/50/50', min_call_equity=.5, min_bet_equity=-.5))
-        self.env.add_player(EquityPlayer(name='equity/50/80', min_call_equity=.8, min_bet_equity=-.8))
-        self.env.add_player(EquityPlayer(name='equity/70/70', min_call_equity=.7, min_bet_equity=-.7))
-        self.env.add_player(EquityPlayer(name='equity/20/30', min_call_equity=.2, min_bet_equity=-.3))
-        self.env.add_player(RandomPlayer())
-        self.env.add_player(RandomPlayer())
+        players = [EquityPlayer(name='equity/50/50', min_call_equity=.5, min_bet_equity=-.5),
+                   EquityPlayer(name='equity/50/80', min_call_equity=.8, min_bet_equity=-.8),
+                   EquityPlayer(name='equity/70/70', min_call_equity=.7, min_bet_equity=-.7),
+                   EquityPlayer(name='equity/20/30', min_call_equity=.2, min_bet_equity=-.3),
+                   RandomPlayer(), RandomPlayer()
+                   ]
+        self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render, players=players)
 
         for _ in range(self.num_episodes):
             self.env.reset()
@@ -156,11 +149,10 @@ class SelfPlay:
 
         for improvement_round in range(improvement_rounds):
             env_name = 'neuron_poker-v0'
-            self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render)
-            for i in range(6):
-                self.env.add_player(EquityPlayer(name=f'Equity/{calling[i]}/{betting[i]}',
-                                                 min_call_equity=calling[i],
-                                                 min_bet_equity=betting[i]))
+            players = [EquityPlayer(name=f'Equity/{calling[i]}/{betting[i]}',
+                                    min_call_equity=calling[i],
+                                    min_bet_equity=betting[i]) for i in range(6)]
+            self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render, players=players)
 
             for _ in range(self.num_episodes):
                 self.env.reset()
@@ -179,76 +171,71 @@ class SelfPlay:
                 betting[i] = np.mean([betting[i], betting[best_player]])
                 self.log.info(f"New betting for player {i} is {betting[i]}")
 
-    def dqn_train_keras_rl(self, model_name):
-        """Implementation of kreras-rl deep q learing."""
-        from agents.agent_consider_equity import Player as EquityPlayer
-        from agents.agent_keras_rl_dqn import Player as DQNPlayer
-        from agents.agent_random import Player as RandomPlayer
-        env_name = 'neuron_poker-v0'
-        env = gym.make(env_name, initial_stacks=self.stack, funds_plot=self.funds_plot, render=self.render,
-                       use_cpp_montecarlo=self.use_cpp_montecarlo)
+    # # todo 要修改這個窗口.
+    # def dqn_train_keras_rl(self, model_name):
+    #     """Implementation of kreras-rl deep q learing."""
+    #     env_name = 'neuron_poker-v0'
+    #
+    #     players = [RandomPlayer() for _ in range(3)]
+    #     players.extend([EquityPlayer(name='equity/50/70', min_call_equity=.5, min_bet_equity=.7),
+    #                     EquityPlayer(name='equity/20/30', min_call_equity=.2, min_bet_equity=.3)])
+    #     players.append(PlayerShell(name='keras-rl', stack_size=self.stack))  # shell is used for callback to keras rl
+    #     env = gym.make(env_name, initial_stacks=self.stack, funds_plot=self.funds_plot, render=self.render, players=players,
+    #                    use_cpp_montecarlo=self.use_cpp_montecarlo)
+    #     np.random.seed(123)
+    #     env.seed(123)
+    #     env.reset()
+    #
+    #     dqn = DQNPlayer()
+    #     dqn.initiate_agent(env)
+    #     dqn.train(env_name=model_name)
+    #
+    # def dqn_play_keras_rl(self, model_name):
+    #     """Create 6 players, one of them a trained DQN"""
+    #     from agents.agent_consider_equity import Player as EquityPlayer
+    #     from agents.agent_keras_rl_dqn import Player as DQNPlayer
+    #     from agents.agent_random import Player as RandomPlayer
+    #     env_name = 'neuron_poker-v0'
+    #     self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render)
+    #     self.env.add_player(EquityPlayer(name='equity/50/50', min_call_equity=.5, min_bet_equity=.5))
+    #     self.env.add_player(EquityPlayer(name='equity/50/80', min_call_equity=.8, min_bet_equity=.8))
+    #     self.env.add_player(EquityPlayer(name='equity/70/70', min_call_equity=.7, min_bet_equity=.7))
+    #     self.env.add_player(EquityPlayer(name='equity/20/30', min_call_equity=.2, min_bet_equity=.3))
+    #     self.env.add_player(RandomPlayer())
+    #     self.env.add_player(PlayerShell(name='keras-rl', stack_size=self.stack))
+    #
+    #     self.env.reset()
+    #
+    #     dqn = DQNPlayer(load_model=model_name, env=self.env)
+    #     dqn.play(nb_episodes=self.num_episodes, render=self.render)
 
-        np.random.seed(123)
-        env.seed(123)
-        env.add_player(EquityPlayer(name='equity/50/70', min_call_equity=.5, min_bet_equity=.7))
-        env.add_player(EquityPlayer(name='equity/20/30', min_call_equity=.2, min_bet_equity=.3))
-        env.add_player(RandomPlayer())
-        env.add_player(RandomPlayer())
-        env.add_player(RandomPlayer())
-        env.add_player(PlayerShell(name='keras-rl', stack_size=self.stack))  # shell is used for callback to keras rl
-
-        env.reset()
-
-        dqn = DQNPlayer()
-        dqn.initiate_agent(env)
-        dqn.train(env_name=model_name)
-
-    def dqn_play_keras_rl(self, model_name):
-        """Create 6 players, one of them a trained DQN"""
-        from agents.agent_consider_equity import Player as EquityPlayer
-        from agents.agent_keras_rl_dqn import Player as DQNPlayer
-        from agents.agent_random import Player as RandomPlayer
-        env_name = 'neuron_poker-v0'
-        self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render)
-        self.env.add_player(EquityPlayer(name='equity/50/50', min_call_equity=.5, min_bet_equity=.5))
-        self.env.add_player(EquityPlayer(name='equity/50/80', min_call_equity=.8, min_bet_equity=.8))
-        self.env.add_player(EquityPlayer(name='equity/70/70', min_call_equity=.7, min_bet_equity=.7))
-        self.env.add_player(EquityPlayer(name='equity/20/30', min_call_equity=.2, min_bet_equity=.3))
-        self.env.add_player(RandomPlayer())
-        self.env.add_player(PlayerShell(name='keras-rl', stack_size=self.stack))
-
-        self.env.reset()
-
-        dqn = DQNPlayer(load_model=model_name, env=self.env)
-        dqn.play(nb_episodes=self.num_episodes, render=self.render)
-
-    def dqn_train_custom_q1(self):
-        """Create 6 players, 4 of them equity based, 2 of them random"""
-        from agents.agent_consider_equity import Player as EquityPlayer
-        from agents.agent_custom_q1 import Player as Custom_Q1
-        from agents.agent_random import Player as RandomPlayer
-        env_name = 'neuron_poker-v0'
-        self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render)
-        # self.env.add_player(EquityPlayer(name='equity/50/50', min_call_equity=.5, min_bet_equity=-.5))
-        # self.env.add_player(EquityPlayer(name='equity/50/80', min_call_equity=.8, min_bet_equity=-.8))
-        # self.env.add_player(EquityPlayer(name='equity/70/70', min_call_equity=.7, min_bet_equity=-.7))
-        self.env.add_player(EquityPlayer(name='equity/20/30', min_call_equity=.2, min_bet_equity=-.3))
-        # self.env.add_player(RandomPlayer())
-        self.env.add_player(RandomPlayer())
-        self.env.add_player(RandomPlayer())
-        self.env.add_player(Custom_Q1(name='Deep_Q1'))
-
-        for _ in range(self.num_episodes):
-            self.env.reset()
-            self.winner_in_episodes.append(self.env.winner_ix)
-
-        league_table = pd.Series(self.winner_in_episodes).value_counts()
-        best_player = league_table.index[0]
-
-        print("League Table")
-        print("============")
-        print(league_table)
-        print(f"Best Player: {best_player}")
+    # def dqn_train_custom_q1(self):
+    #     """Create 6 players, 4 of them equity based, 2 of them random"""
+    #     from agents.agent_consider_equity import Player as EquityPlayer
+    #     from agents.agent_custom_q1 import Player as Custom_Q1
+    #     from agents.agent_random import Player as RandomPlayer
+    #     env_name = 'neuron_poker-v0'
+    #     self.env = gym.make(env_name, initial_stacks=self.stack, render=self.render)
+    #     # self.env.add_player(EquityPlayer(name='equity/50/50', min_call_equity=.5, min_bet_equity=-.5))
+    #     # self.env.add_player(EquityPlayer(name='equity/50/80', min_call_equity=.8, min_bet_equity=-.8))
+    #     # self.env.add_player(EquityPlayer(name='equity/70/70', min_call_equity=.7, min_bet_equity=-.7))
+    #     self.env.add_player(EquityPlayer(name='equity/20/30', min_call_equity=.2, min_bet_equity=-.3))
+    #     # self.env.add_player(RandomPlayer())
+    #     self.env.add_player(RandomPlayer())
+    #     self.env.add_player(RandomPlayer())
+    #     self.env.add_player(Custom_Q1(name='Deep_Q1'))
+    #
+    #     for _ in range(self.num_episodes):
+    #         self.env.reset()
+    #         self.winner_in_episodes.append(self.env.winner_ix)
+    #
+    #     league_table = pd.Series(self.winner_in_episodes).value_counts()
+    #     best_player = league_table.index[0]
+    #
+    #     print("League Table")
+    #     print("============")
+    #     print(league_table)
+    #     print(f"Best Player: {best_player}")
 
 
 if __name__ == '__main__':
